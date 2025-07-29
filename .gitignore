@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+*.log
+
+# Virtual environments
+venv/
+env/
+.venv/
+.env/
+
+# Jupyter / IPython
+.ipynb_checkpoints
+
+# VS Code settings
+.vscode/
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# API keys or secrets
+*.key
+*.pem
+*.json
+.env
+
+# Output folders
+output/
+videos/
+audio/
+images/
+temp/
+
+# Model weights or large files (if using local AI tools later)
+*.ckpt
+*.pth
+*.onnx
+models/
+
+# Cache / temp
+*.tmp
+*.bak
+.cache/
+__temp__/
+
+# Ignore database dumps or test files
+*.sqlite
+*.db
+*.sql
+
+node_modules/
+package-lock.json
