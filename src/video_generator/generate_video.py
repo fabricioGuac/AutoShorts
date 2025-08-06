@@ -6,7 +6,7 @@ from src.video_generator import generate_script, generate_audio, generate_images
 def generate_video(user_id: int):
     # Load user data and prompt config from DB
     user = user_crud.get_user(user_id)
-    prompt_config = prompt_crud.get_prompt_prompt_config(user_id)
+    prompt_config = prompt_crud.get_prompt_config(user_id)
 
     # Generate the script
     script, title = generate_script.generate_script(prompt_config)

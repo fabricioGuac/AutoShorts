@@ -2,7 +2,6 @@ import json
 import re
 import os
 from typing import Tuple
-from src.db import get_db_connection
 import google.generativeai as genai
 from src.crud import prompt_crud
 from src.utils.paths import get_output_dir
@@ -55,7 +54,6 @@ def build_prompt(topic: str,scope: str,covered_topics: list[str],wpm:int) -> str
 
 
 def generate_script(prompt_config) -> tuple[list[dict], str]:
-    db = get_db_connection()
 
     prompt = build_prompt(
         topic=prompt_config.topic,
@@ -70,7 +68,7 @@ def generate_script(prompt_config) -> tuple[list[dict], str]:
 
     # Updates the covered topics
     new_title = response_data["title"]
-    prompt_crud.append_covered_topic_if_missing(db, prompt_config.id, new_title)
+    prompt_crud.append_covered_topic_if_missing(prompt_config.id, new_title)
 
     # Writes the script to the output folder for the current topic
     output_dir = get_output_dir(prompt_config.id, new_title)
