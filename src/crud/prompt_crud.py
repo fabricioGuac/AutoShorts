@@ -1,4 +1,5 @@
 from src.db import conn
+from psycopg2.extras import RealDictCursor
 from typing import Optional, Literal
 
 # Function to cerate a new prompt config
@@ -18,10 +19,10 @@ def create_prompt_config(user_id:int, topic:str, scope:str, wpm:int) -> int:
         return prompt_config_id
 
 # Function to retrieve the prompt config by it's user id
-def get_prompt_config(user_id: int) -> Optional[tuple]:
-    with conn.cursor() as cur:
+def get_prompt_config(user_id: int) -> Optional[dict]:
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute("SELECT * FROM prompt_config WHERE user_id = %s;", (user_id,))
-        # Returns a tuple (id, user_id, topic, scope, covered_topics, wpm) or None if not found 
+        # Returns a directory or None if not found 
         return cur.fetchone()
 
 # Function to update a user mutable field (topic, scope, wpm) in prompt_config

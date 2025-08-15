@@ -1,5 +1,8 @@
 from elevenlabs.client import ElevenLabs
 from elevenlabs import save
+from src.utils.paths import get_output_dir
+import os
+
 
 # Eleven labs set up
 elevenlabs = ElevenLabs(api_key=os.environ["ELEVENLABS_API_KEY"])

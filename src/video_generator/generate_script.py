@@ -12,14 +12,16 @@ text_model = genai.GenerativeModel('gemini-2.5-flash')
 
 # Helper function to format the gemini response as JSON
 def extract_json_from_gemini(text: str):
-    # Try to match markdown-style JSON
+    # Try to match markdown-style JSON block
     match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text)
-    
-    if match:
-        json_str = match.group(1).strip()
-    else:
-        # If no triple backticks, assume entire response might be JSON
-        json_str = text.strip()
+    json_str = match.group(1).strip() if match else text.strip()
+
+    # Clean out problematic characters outside normal JSON syntax
+    json_str = re.sub(
+        r'(?<!")([^\x00-\x7F]+)(?!")',  # non-ASCII outside of string quotes
+        '',
+        json_str
+    )
 
     # Try parsing
     try:
@@ -53,13 +55,13 @@ def build_prompt(topic: str,scope: str,covered_topics: list[str],wpm:int) -> str
     )
 
 
-def generate_script(prompt_config) -> tuple[list[dict], str]:
+def generate_script(prompt_config: dict) -> tuple[list[dict], str]:
 
     prompt = build_prompt(
-        topic=prompt_config.topic,
-        scope=prompt_config.scope,
-        covered_topics=prompt_config.covered_topics,
-        wpm=prompt_config.wpm
+        topic=prompt_config["topic"],
+        scope=prompt_config["scope"],
+        covered_topics=prompt_config["covered_topics"],
+        wpm=prompt_config["wpm"]
     )
 
     # Generate script from Gemini
@@ -68,10 +70,10 @@ def generate_script(prompt_config) -> tuple[list[dict], str]:
 
     # Updates the covered topics
     new_title = response_data["title"]
-    prompt_crud.append_covered_topic_if_missing(prompt_config.id, new_title)
+    prompt_crud.append_covered_topic_if_missing(prompt_config["id"], new_title)
 
     # Writes the script to the output folder for the current topic
-    output_dir = get_output_dir(prompt_config.id, new_title)
+    output_dir = get_output_dir(prompt_config["id"], new_title)
 
     script_path = os.path.join(output_dir, "script.json")
     with open(script_path, "w") as f:

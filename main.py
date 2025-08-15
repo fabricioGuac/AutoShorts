@@ -19,8 +19,8 @@ def main():
         from src.scheduler.cron_tasks import post_scheduled_content
         post_scheduled_content()
     else:
-        from src.cli import cli
-        cli()
+        from src.cli import cli_main
+        cli_main()
 
 # Runs main() only when this script is executed directly (e.g, via terminal or cron),
 # and prevents it from running on import

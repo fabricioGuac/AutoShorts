@@ -1,7 +1,7 @@
 from src.db import conn
 from typing import Optional
 
-# Function to create a cew token
+# Function to create a new token
 def create_token(
     user_id: int,
     platform:str,

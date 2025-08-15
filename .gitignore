@@ -51,7 +51,6 @@ __temp__/
 # Ignore database dumps or test files
 *.sqlite
 *.db
-*.sql
 
 node_modules/
 package-lock.json

@@ -1,4 +1,5 @@
 from src.db import conn
+from psycopg2.extras import RealDictCursor
 from typing import Optional
 
 # Function to cerate a new user
@@ -17,11 +18,17 @@ def create_user(username:str, voice_id: str) -> int:
         conn.commit()
         return user_id
 
+# Function to retrieve all users
+def get_all_users() -> list[dict]:
+    with conn.cursor(cursor_factory=RealDictCursor)as cur:
+        cur.execute("SELECT * FROM users")
+        return cur.fetchall()
+
 # Function to retrieve an user by it's id
-def get_user(user_id: int) -> Optional[tuple]:
-    with conn.cursor() as cur:
-        cur.execute("SELECT * FROM  WHERE id = %s;", (user_id,))
-        # Returns a tuple (id, username, voice_id) or None if not found 
+def get_user(user_id: int) -> Optional[dict]:
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute("SELECT * FROM users WHERE id = %s;", (user_id,))
+        # Returns a dictionary or None if not found 
         return cur.fetchone()
 
 # Function to update the user's voice id

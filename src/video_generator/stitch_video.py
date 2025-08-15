@@ -1,5 +1,6 @@
 from moviepy import ImageClip, AudioFileClip, concatenate_videoclips
 from src.utils.paths import get_output_dir
+import os
 
 def stitch_video(script: list[str], image_paths: list[str], audio_path: str, title: str, prompt_config_id: int) -> str:
     
@@ -9,7 +10,11 @@ def stitch_video(script: list[str], image_paths: list[str], audio_path: str, tit
     image_clips = []
     for i, image_path in enumerate(image_paths):
         duration = script[i].get("duration", 5)
-        clip = ImageClip(image_path).with_duration(duration).resized(height=1080).with_position("center")
+        clip = ImageClip(image_path).with_duration(duration)
+        clip = clip.resized(height=1080)
+        # Ensure width and height are divisible by 2 (needed for some encoders. AI-generated images usually don't need this)
+        clip = clip.resized(lambda t: (clip.w // 2 * 2, clip.h // 2 * 2))
+        clip = clip.with_position("center")
         image_clips.append(clip)
 
     # Stitch and export

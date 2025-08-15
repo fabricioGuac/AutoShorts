@@ -29,7 +29,7 @@ def get_user_schedule(user_id:int) -> list[tuple]:
     with conn.cursor() as cur:
         cur.execute(
         """
-        SELECT * FROM
+        SELECT schedule_day, schedule_hour FROM
         user_schedule WHERE user_id = %s
         ORDER BY 
             CASE schedule_day
