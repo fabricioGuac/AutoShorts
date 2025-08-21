@@ -27,6 +27,7 @@ CREATE TABLE prompt_config (
 -- Social tokens table to hold the platform to automate/schedule posting
 CREATE TABLE social_tokens (
     id SERIAL PRIMARY KEY,
+    -- TODO: Strongly consider implementing encription in this table
     user_id INT REFERENCES users(id) ON DELETE CASCADE,
     platform TEXT,
 
@@ -45,6 +46,7 @@ CREATE TABLE user_schedule (
     id SERIAL PRIMARY KEY,
     user_id INT REFERENCES users(id) ON DELETE CASCADE,
     schedule_day VARCHAR NOT NULL,
-    schedule_hour INT NOT NULL 
+    schedule_hour INT NOT NULL, 
+    UNIQUE(user_id, schedule_day, schedule_hour)  -- Prevents duplicates
     -- schedule_time TIME NOT NULL 
 );

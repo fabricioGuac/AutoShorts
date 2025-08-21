@@ -7,6 +7,7 @@ from src.crud import (
     schedule_crud,
 )
 from src.video_generator import generate_video
+from src.scheduler import scheduler_manager
 
 # Main menu and entry point for the cli logic
 def cli_main():
@@ -147,7 +148,18 @@ def add_schedule_flow(user_id: int) -> None:
             if 0 <= hour <= 23:
                 break
         print("Please enter a valid hour between 0 and 23.")
-    schedule_crud.create_schedule(user_id, day, hour)
+    # Try to create schedule
+    schedule_id = schedule_crud.create_schedule(user_id, day, hour)
+    if schedule_id is None:
+        # Already exists so skip the rest
+        return
+    # Checks if we already have an user with the same schedule (meaning cron/WTS already has an scheduled run at that time)
+    users_in_slot = schedule_crud.get_users_to_post_at(day, hour)
+    if len(users_in_slot) == 1: # If it is just the recently added user then add to the system scheduler
+        if scheduler_manager.add_schedule_task(day, hour):
+            print("System task created.")
+        else:
+            print("System task already existed or failed.")
     print("Schedule entry added.")
 
 
@@ -175,6 +187,13 @@ def schedule_management_flow(user_id:int) -> None:
         entry_day, entry_hour_str = entry.split(" at ")
         entry_hour = int(entry_hour_str.split(":")[0])
         schedule_crud.remove_schedule(user_id, entry_day, entry_hour)
+        # Check if any other users still need the cron/WTS at the specified time
+        users_in_slot = schedule_crud.get_users_to_post_at(entry_day, entry_hour)
+        if not users_in_slot: # None left so we can remove from system scheduler
+            if scheduler_manager.remove_schedule_task(entry_day, entry_hour):
+                print("System task removed.")
+            else:
+                print("System task did not exist or failed to remove.")
         print("Schedule entry removed")
     else:
         return

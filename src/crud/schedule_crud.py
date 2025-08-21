@@ -1,21 +1,27 @@
 from src.db import conn
+import psycopg2.errors
 import datetime
 from typing import Optional
 
 # Function to create a schedule entry
 def create_schedule(user_id:int, schedule_day:str, schedule_hour:int) -> int:
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            INSERT INTO user_schedule (user_id, schedule_day, schedule_hour) 
-            VALUES (%s, %s, %s)
-            RETURNING id;
-            """,
-            (user_id, schedule_day, schedule_hour)
-        )
-        schedule_id = cur.fetchone()[0]
-        conn.commit()
-        return schedule_id
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO user_schedule (user_id, schedule_day, schedule_hour) 
+                VALUES (%s, %s, %s)
+                RETURNING id;
+                """,
+                (user_id, schedule_day, schedule_hour)
+            )
+            schedule_id = cur.fetchone()[0]
+            conn.commit()
+            return schedule_id
+    except psycopg2.errors.UniqueViolation:
+        conn.rollback()
+        print(f"User already has a schedule for {schedule_day} at {schedule_hour:02d}:00")
+        return None
 
 # Function to remove a specific schedule
 def remove_schedule(user_id: int, schedule_day: str, schedule_hour: int) -> bool:
@@ -47,12 +53,8 @@ def get_user_schedule(user_id:int) -> list[tuple]:
         return cur.fetchall()
 
 # Function to fetch all users that have post schedules at the current time
-def get_users_to_post_now() -> list[int]:
-    # Gets the current weekday and the current hour (e.g, "Friday") and (0-23)
-    now = datetime.datetime.now()
-    current_day = now.strftime("%A")
-    current_hour = now.hour
+def get_users_to_post_at(schedule_day: str, schedule_hour: int) -> list[int]:
 
     with conn.cursor() as cur:
-        cur.execute("SELECT user_id FROM user_schedule WHERE schedule_day = %s AND schedule_hour = %s", (current_day, current_hour))
+        cur.execute("SELECT user_id FROM user_schedule WHERE schedule_day = %s AND schedule_hour = %s", (schedule_day, schedule_hour))
         return [row[0] for row in cur.fetchall()]
