@@ -6,6 +6,7 @@ from src.crud import (
     tokens_crud,
     schedule_crud,
 )
+from src.poster.post_to_tiktok import login_and_save_session
 from src.video_generator import generate_video
 from src.scheduler import scheduler_manager
 
@@ -204,21 +205,38 @@ def add_tokens_flow(user_id: int) -> None:
 
     for platform in platforms:
         print(f"\n--- {platform.upper()} ---")
-        access = inquirer.text(message="Access token (leave blank for now)").execute()
-        refresh = inquirer.text(message="Refresh token (leave blank for now)").execute()
-        expiry = inquirer.text(message="Expiry (leave blank for now)").execute()
-        username = inquirer.text(message="Login username (leave blank for now)").execute()
-        password = inquirer.secret(message="Login password (leave blank for now)").execute()
+        
+        if platform == "tiktok":
+            confirm = inquirer.confirm(
+                message="Do you want to set up TikTok login now?",
+                default=False
+            ).execute()
 
-        tokens_crud.create_token(
-            user_id,
-            platform,
-            access or None, refresh or None,
-            expiry or None, username or None,
-            password or None
-        )
+            if confirm:
+                login_and_save_session(user_id)
+                print("TikTok cookues saved successfully!")
+            else:
+                print("Skipping TikTok set up for now.")
 
-    print("Tokens initialized for all platforms.")
+        elif platform == "youtube":
+            client_id = inquirer.text(message="Client ID (leave blank to skip):").execute()
+            client_secret = inquirer.text(message="Client Secret (leave blank to skip):").execute()
+            refresh_token = inquirer.text(message="Refresh Token (leave blank to skip):").execute()
+
+            tokens_crud.create_token(
+                user_id,
+                platform,
+                access=None,
+                refresh=refresh_token or None,
+                expiry=None,
+                username=client_id or None,
+                password=client_secret or None
+            )
+            print("YouTube token saved successfully!")
+
+        elif platform == "instagram":
+            print("I dont have the Graph API logic done yet because META keeeps banning me!")
+    print("Tokens setup flow complete.")
 
 
 # Cli logic to manage a user's social media posting tokens
@@ -230,15 +248,33 @@ def tokens_management_flow(user_id:int) -> None:
     current_tokens = tokens_crud.get_token_by_user_and_platform(user_id, platform)
     print("Current:", current_tokens)
 
-    access = inquirer.text(message="New access token (leave blank to skip)").execute()
-    refresh = inquirer.text(message="New refresh token (leave blank to skip)").execute()
-    expiry = inquirer.text(message="New expiry (leave blank to skip)").execute()
-    username = inquirer.text(message="Login username (leave blank to skip)").execute()
-    password = inquirer.secret(message="Login password (leave blank to skip)").execute()
-    tokens_crud.update_token(
-        user_id,platform,
-        access or None, refresh or None,
-        expiry or None, username or None,
-        password or None
+    if platform == "tiktok":
+        confirm = inquirer.confirm(
+            message="Do you want to refresh your TikTok login and update cookies?",
+            default=True
+        ).execute()
+
+        if confirm:
+            login_and_save_session(user_id)
+            print("TikTok cookies updated successfully!")
+        else:
+            print("TikTok update skipped.")
+
+    elif platform == "youtube":
+        client_id = inquirer.text(message="New client ID (leave blank to skip):").execute()
+        client_secret = inquirer.text(message="New client secret (leave blank to skip):").execute()
+        refresh_token = inquirer.text(message="New refresh token (leave blank to skip):").execute()
+
+        tokens_crud.update_token(
+            user_id,
+            platform,
+            access=None,
+            refresh=refresh_token or None,
+            expiry=None,
+            username=client_id or None,
+            password=client_secret or None
         )
-    print("Token updated")
+        print("YouTube token updated successfully!")
+
+    elif platform == "instagram":
+        print("I dont have the Graph API logic done yet because META keeeps banning me!")

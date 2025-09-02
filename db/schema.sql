@@ -32,13 +32,11 @@ CREATE TABLE social_tokens (
     platform TEXT,
 
     -- OAuth style tokens (eg, Youtube)
-    access_token TEXT,
     refresh_token TEXT,
-    token_expiry TIMESTAMP,
-
-    -- Username/Password fields for login based automation (eg, Instagram)
-    username TEXT,
-    password TEXT
+    client_id TEXT,
+    client_secret TEXT,
+    
+    cookies TEXT -- For the tiktok logic since the officila API is limited to bussiness accounts we will just keep cookies and use selenium
 );
 
 -- User posting shedule table
