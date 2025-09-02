@@ -20,7 +20,7 @@ def generate_video(user_id: int) -> str:
     # Stitch the images and audio into the final video
     final_video_path = stitch_video.stitch_video(script,image_paths, audio_path, title, prompt_config['id'])
 
-    # Post video to social media platforms
-    # social_media_poster.post_video(user_id, final_video_path)
+    # Post video to social media platforms (use the first narration from the script as the descriptionfor the post)
+    # social_media_poster.post_video(user_id, final_video_path, script[0]['narration'] if script and 'narration' in script[0] else title, title)
 
     return final_video_path

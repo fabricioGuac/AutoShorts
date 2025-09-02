@@ -22,6 +22,9 @@ def generate_images(script: list[dict], title: str, prompt_config_id: int) -> li
             data={
                 "prompt": scene["image_prompt"],
                 "output_format": "jpeg",
+                # to ensure 9:16 aspect ratio
+                "width": 1080,
+                "height": 1920
             },
         )
 
