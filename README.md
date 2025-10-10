@@ -11,9 +11,23 @@
 3. Open your terminal and run the following:
 
 ```bash
-# Create and activate the virtual environment
+# 1. Create a virtual environment
+# Windows & Linux & Mac
 py -m venv venv
-source venv/Scripts/activate (in windows)
+
+# 2. Activate the virtual environment
+
+# Windows (Command Prompt)
+venv\Scripts\activate.bat
+
+# Windows (PowerShell)
+venv\Scripts\Activate.ps1
+
+# Windows (Git Bash / WSL)
+source venv/Scripts/activate
+
+# Linux / MacOS
+source venv/bin/activate
 
 # Install dependencies
 py -m pip install -r requirements.txt
