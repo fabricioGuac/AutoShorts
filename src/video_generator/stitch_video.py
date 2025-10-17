@@ -13,7 +13,7 @@ def stitch_video(script: list[dict], image_paths: list[str], audio_path: str, ti
     # Convert image paths to image clips
     for i, image_path in enumerate(image_paths):
         duration = script[i].get("duration", 5)
-        clip = ImageClip(image_path).with_duration(duration)
+        clip = ImageClip(image_path, duration=duration)
 
         # Resize height to target (1920 for Shorts)
         clip = clip.resized(height=target_height)

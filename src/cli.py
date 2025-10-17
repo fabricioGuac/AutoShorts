@@ -6,7 +6,7 @@ from src.crud import (
     tokens_crud,
     schedule_crud,
 )
-from src.poster.post_to_tiktok import login_and_save_session
+from src.poster.tiktok_poster import login_and_save_session
 from src.video_generator import generate_video
 from src.scheduler import scheduler_manager
 
