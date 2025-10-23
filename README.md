@@ -2,20 +2,45 @@
 
 ## Description 
 
+**Auto Shorts** is an AI-powered dynamic short video generator for social media automation.  
+Built in **Python**, it automatically creates and posts short-form videos to **YouTube Shorts** and **TikTok**, combining AI tools for scriptwriting, voiceovers, image generation, and scheduling.
 
+###  Features
+-  **Script generation** using **Gemini AI Flash 2.5**
+-  **Voice narration** via **ElevenLabs API**
+-  **Image generation** with **Stability API** *(or a local fallback using `runwayml/stable-diffusion-v1-5`)*
+-  **Video assembly** (images + narration) handled with **MoviePy**
+-  **Auto posting** to:
+    - TikTok via **Selenium automation** (session-based, cookie-driven)
+    - YouTube via **YouTube Data API**
+-  **Scheduling** handled via **Windows Task Scheduler** or **cron** (on Linux/Mac)
+-  **Data persistence** with **PostgreSQL**, storing:
+    - User profiles, voice IDs
+    - Prompt settings (topic, tone, pace)
+    - Encrypted social tokens (YouTube OAuth, TikTok cookies)
+    - Posting schedule
 
 ## Instalation
 
-1. Clone or download this repository (even if it's just for personal/local use).
-2. Make sure you have **Python 3.10+** installed.
-3. Open your terminal and run the following:
+1. Clone or download this repository.
+2. Make sure you have:
+    * **Python 3.10+**
+    * **PostgreSQL** installed and running locally.
+3. Open your terminal in the project and run the following:
 
 ```bash
-# 1. Create a virtual environment
+
+# 1. Create the database
+psql -U your_user -c "CREATE DATABASE autoshorts_db;"
+
+# 2. Apply the schema
+psql -U your_user -d autoshorts_db -f db/schema.sql
+
+# 3. Create a virtual environment
 # Windows & Linux & Mac
 py -m venv venv
 
-# 2. Activate the virtual environment
+# 4. Activate the virtual environment
 
 # Windows (Command Prompt)
 venv\Scripts\activate.bat
@@ -29,12 +54,56 @@ source venv/Scripts/activate
 # Linux / MacOS
 source venv/bin/activate
 
-# Install dependencies
+# 5. Install dependencies
 py -m pip install -r requirements.txt
 ```
 
 ## Usage
 
+1. Create a .env file in the project root with the following variables:
+```
+
+GOOGLE_API_KEY=your_google_ai_key
+ELEVENLABS_API_KEY= your_elevenlabs_key
+STABILITY_API_KEY= your_stability_key_or_blank_if_local
+
+DB_NAME=autoshorts_db
+DB_PASSWORD=your_postgres_password
+DB_USER=your_postgres_user
+DB_HOST=localhost
+DB_PORT=5432
+
+ENCRYPTION_KEY=your_generated_fernet_key
+
+```
+
+To generate an encryption key: 
+
+```
+from cryptography.fernet import Fernet
+print(Fernet.generate_key().decode())
+```
+
+
+2. (Optional) If using **local image generation**, make sure your system meets the minimun GPU requirements:
+
+  * 4GB VRAM (NVIDIA recommended)
+  * 8-16GB RAM
+  * ~12GB of storage (preferably on an SSD for faster loading)
+
+3. Run the CLI:
+
+```
+
+py main.py
+
+```
+
+From there, you can:
+
+* Create users and configure their prompt, voice, social tokens, and schedule.
+* View, edit or delete existing users
+* Manually trigger video generation.
 
 ## License
 
