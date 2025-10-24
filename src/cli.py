@@ -201,7 +201,7 @@ def schedule_management_flow(user_id:int) -> None:
 
 # Cli logit to add social media tokens
 def add_tokens_flow(user_id: int) -> None:
-    platforms = ["youtube", "instagram", "tiktok"]
+    platforms = ["youtube",  "tiktok"] #"instagram",
 
     for platform in platforms:
         print(f"\n--- {platform.upper()} ---")
@@ -234,8 +234,8 @@ def add_tokens_flow(user_id: int) -> None:
             )
             print("YouTube token saved successfully!")
 
-        elif platform == "instagram":
-            print("I dont have the Graph API logic done yet because META keeeps banning me!")
+        # elif platform == "instagram":
+        #     print("I dont have the Graph API logic done yet because META keeeps banning me!")
     print("Tokens setup flow complete.")
 
 
@@ -243,7 +243,7 @@ def add_tokens_flow(user_id: int) -> None:
 def tokens_management_flow(user_id:int) -> None:
     platform = inquirer.select(
         message="Which platform?",
-        choices=["youtube","instagram","tiktok"]
+        choices=["youtube","tiktok"] #"instagram",
     ).execute()
     current_tokens = tokens_crud.get_token_by_user_and_platform(user_id, platform)
     print("Current:", current_tokens)
@@ -266,15 +266,13 @@ def tokens_management_flow(user_id:int) -> None:
         refresh_token = inquirer.text(message="New refresh token (leave blank to skip):").execute()
 
         tokens_crud.update_token(
-            user_id,
-            platform,
-            access=None,
-            refresh=refresh_token or None,
-            expiry=None,
-            username=client_id or None,
-            password=client_secret or None
+            user_id=user_id,
+            platform=platform,
+            refresh_token=refresh_token or None,
+            client_id=client_id or None,
+            client_secret=client_secret or None
         )
         print("YouTube token updated successfully!")
 
-    elif platform == "instagram":
-        print("I dont have the Graph API logic done yet because META keeeps banning me!")
+    # elif platform == "instagram":
+    #     print("I dont have the Graph API logic done yet because META keeeps banning me!")

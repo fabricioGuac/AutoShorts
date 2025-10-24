@@ -2,181 +2,411 @@ import os
 import json
 import time
 import random
+import tempfile
+import platform
 from pathlib import Path
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.keys import Keys
+
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.chrome.webdriver import WebDriver
 from selenium.webdriver.support import expected_conditions as EC
-from fake_useragent import UserAgent
-from undetected_chromedriver import Chrome as UcChrome
-from src.crud.tokens_crud import get_token_by_user_and_platform
-from src.crud.tokens_crud import update_token
+from selenium.webdriver.common.action_chains import ActionChains
 
-# If scaled consider proxy rotation
-# Function to create the selenium driver
-def create_driver(headless: bool) -> UcChrome:
-    ua = UserAgent()
-    random_user_agent = ua.random  # Generate random user agent per session
+import undetected_chromedriver as uc
+from src.crud.tokens_crud import get_token_by_user_and_platform, update_token
 
-    options = Options()
+# ---------- Configuration ----------
+UPLOAD_URL = "https://www.tiktok.com/tiktokstudio/upload"
+LOGIN_URL = "https://www.tiktok.com/login"
+SUCCESS_URL_FRAGMENT = "tiktokstudio/content"
+# CSS / XPaths we rely on (tweak if the page changes)
+FILE_INPUT_CSS = "input[type='file']"
+CAPTION_CSS = "[contenteditable='true']"
+POST_BTN_CSS = "[data-e2e='post_video_button']"
+MODAL_CONTAINER_CSS = ".TUXModal"
 
-    # Basic stealth flags
-    options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_argument("--disable-infobars")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-gpu")
-    options.add_argument("--disable-dev-shm-usage")
+# ---------- Driver & stealth helpers ----------
+# Creates an undetected-chromedriver Chrome instance tuned for TikTok.
+def create_driver(headless: bool = False) -> uc.Chrome:
 
-    # Randomized window size for fingerprinting avoidance
-    width = random.randint(1200, 1400)
-    height = random.randint(700, 900)
-    options.add_argument(f"--window-size={width},{height}")
+    # Creates a temporary directory to act as as Chrome's user data directory 
+    # in an isolated enviroment per run. Keeps cookies, cache, and extensions
+    temp_profile = Path(tempfile.mkdtemp())
 
-    # Random user agent
-    options.add_argument(f"--user-agent={random_user_agent}")
-    # Headless mode if required
+    # Builds pre launch Chrome options
+    options = uc.ChromeOptions()
+
+    # Sets the browser's user ageny header to avoid flagging
+    ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+    options.add_argument(f"--user-agent={ua}")
+
+    # Randomizes the window size to mimic human variation
+    options.add_argument(f"--window-size={random.randint(1280,1440)},{random.randint(800,900)}")
+    # Tells Chrome to use the temporary folder as the profile directory
+    options.add_argument(f"--user-data-dir={str(temp_profile)}")
+    # Sets the preferred language
+    options.add_argument("--lang=en-US,en;q=0.9")
+    # Bypass the 'first run' experience  (signing in, setting up defalt browser, customize settinsg)
+    options.add_argument("--no-first-run")
+    # Suppresses the infobar asking you to set the browser as the default
+    options.add_argument("--no-default-browser-check")
+    # Forces simple password store to avoid platform specific keychains
+    options.add_argument("--password-store=basic")
+    # Avoids interactin with the macOS keychain 
+    options.add_argument("--use-mock-keychain")
+
+    # Linux specific flags
+    if platform.system() == "Linux":
+        options.add_argument("--no-sandbox") # Disables Chrome's sandbox where the kernel sandbox causes Chrome to fail to start
+        options.add_argument("--disable-dev-shm-usage") # Disables /dv/shm that could crash Chrome, using diskbased temp files instead
+
+    # Prefer old headless (many sites detect new headless)
     if headless:
-        options.add_argument("--headless=new")
+        options.add_argument("--headless=old")
+        options.add_argument("--disable-gpu") # can be useful for improving stability in headless mode
 
-    # Initialize driver
-    driver = UcChrome(options=options, headless=headless)
-    # Add a small randomized delay after startup
-    time.sleep(random.uniform(1.5, 3.5))
+    # Creates an undetected chromedriver Chrome instance. (use_subprocess=True runs the browser in a separate subproces)
+    driver = uc.Chrome(options=options, use_subprocess=True)
+
+    # Post-start small Chrome DevTools Protocol stealth patches (run on every page)
+    try:
+        """
+        * navigator.webdriver = undefined: Many automation frameworks set 'navigator.webdriver' to 
+        true. Overriding it hides that obvious signal.
+
+        * window.navigator.chrome = { runtime: {} }: Some sites check if 'window.navigator.chrome'
+        presence to detect Chrom. Populating a minimal object reduces mismatch errors.
+
+        * navigator.language and navigator.languages: Make sure JS-visible locale(s) match the
+        --lang flag below ("en-US,en;q=0.9" -> primary 'en-US').
+
+
+        * navigator.plugins = [1,2,3,4,5]: Headless often reports zero plugins. Returniong
+        a small array gives a more realistic fingerprint 
+        """
+        driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
+            "source": """
+                Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+                window.navigator.chrome = {runtime: {}};
+                Object.defineProperty(navigator, 'language', {get: () => 'en-US'});
+                Object.defineProperty(navigator, 'languages', {get: () => ['en-US','en']});
+                Object.defineProperty(navigator, 'plugins', {get: () => [1,2,3,4,5]});
+            """
+        })
+    except Exception as e:
+        print(f"[WARN] CDP stealth patch failed: {e}")
+
+    # small startup delay
+    time.sleep(random.uniform(1.0, 2.0))
     return driver
 
-
-# Function to login and save the session cookies locally
-def login_and_save_session(user_id:int) -> None:
-    # Navigate to the login page
-    driver = create_driver(False)
-    driver.get("https://www.tiktok.com/login")
-    input("[ACTION REQUIRED] Log in manually, then press Enter to continue.")
-    cookies_json = json.dumps(driver.get_cookies())
-    # Save the cookies to the database
-    update_token(user_id, "tiktok", cookies=cookies_json)
+# Function to prevent onelink/intent deeplink redirects that kill the upload flow
+# using CDP blocked URLs and JS overrides for window.open/location.assign
+def block_onelink_and_intents(driver: uc.Chrome):
 
 
-# Function to load the saved session
-def load_session(user_id: int, driver: UcChrome) -> bool:
-    # Get the cookies from the databse
+    try:
+        # Enables the Network domain and blocks known deep-link redirect URLs
+
+        driver.execute_cdp_cmd("Network.enable", {})
+        driver.execute_cdp_cmd("Network.setBlockedURLs", {
+            "urls": [
+                "*onelink.me/*",
+                "*tiktokstudio.onelink.me/*",
+                "intent://*",
+                "*creator_app*"
+            ]
+        })
+    except Exception as e:
+        # not fatal, continue
+        print(f"[WARN] CDP block failed: {e}")
+
+    # JS-level fallback to neutralize attempts to open deep links
+    try:
+        driver.execute_script("""
+        (function(){
+            window.__orig_open = window.open;
+            window.open = function(url) {
+                if(!url) return null;
+                if(typeof url === 'string' && (url.includes('onelink.me') || url.startsWith('intent:') || url.includes('creator_app'))) {
+                    console.log('Blocked deep link:', url);
+                    return null;
+                }
+                return window.__orig_open.apply(this, arguments);
+            };
+            window.__orig_assign = window.location.assign.bind(window.location);
+            window.location.assign = function(url) {
+                if(typeof url === 'string' && (url.includes('onelink.me') || url.startsWith('intent:') || url.includes('creator_app'))){
+                    console.log('Blocked assign:', url);
+                    return;
+                }
+            return window.__orig_assign(url);
+            };
+        })();
+        """)
+    except Exception:
+        pass
+
+# ---------- Cookie helpers ----------
+# Function to login and save the cookies to DB
+def login_and_save_session(user_id: int) -> None:
+    driver = None
+    try:
+        # Open a visible browser (non-headless) for manual login
+        driver = create_driver(False)
+        driver.get(LOGIN_URL)
+        input("[ACTION REQUIRED] Log in manually in the opened browser, then press Enter here to continue...")
+        # Serialize cookies from the active browser session
+        cookies_json = json.dumps(driver.get_cookies())
+        # Saves the cookies to DB
+        update_token(user_id, "tiktok", cookies=cookies_json)
+        print("[INFO] Cookies saved to DB.")
+    finally:
+        # Ensure the browser closes cleanly
+        if driver:
+            try:
+                driver.quit()
+            except Exception:
+                pass
+
+# Function to load a saved TikTok session into the active driver
+def load_session(user_id: int, driver: uc.Chrome) -> bool:
+
+    # Retrieve the cookies from the DB
     token = get_token_by_user_and_platform(user_id, "tiktok")
-    cookies = json.loads(token['cookies'])
-    # Navigate to tiktok
+    # Early return if the cookies are not found
+    if not token or not token.get("cookies"):
+        return False
+
+    # Deserialize cookies from JSON
+    try:
+        cookies = json.loads(token["cookies"])
+    except Exception:
+        return False
+
+    # Navigate to TikTok so the domain context exists before adding cookies
     driver.get("https://www.tiktok.com/")
-    # Load the cookies to the driver
+    time.sleep(1)
+    # Inject each cookie into the browser session
     for cookie in cookies:
-        cookie.pop("sameSite", None)
+        cookie.pop("sameSite", None) # remove unsupported attribute if present
         try:
             driver.add_cookie(cookie)
         except Exception as e:
-            print(f"Skipping problematic cookie: {cookie} ({e})")
-    # Refresh the page once the cookies are loaded
+            # skip problematic cookies
+            print(f"[DEBUG] Skipping cookie: {cookie.get('name')} ({e})")
+    # Refresh the page after loading the session cookies
     driver.refresh()
+    time.sleep(2)
     return True
 
-
-# Function to check if the session is still vaid
-def needs_relogin(user_id: int,driver: UcChrome) -> bool:
-    if not load_session(user_id ,driver, username):
-        return True
-    # Navigate to the upload view, if not logged in it will redirect to the login view
-    driver.get("https://www.tiktok.com/upload")
-    time.sleep(5)
-    return "login" in driver.current_url
-
-
-# Function to post the video to tiktok
-def post_to_tiktok(user_id:int, final_video_path:str, description:str) -> bool:
-
-    # Check if the user has the tokens set up for psoting in the platform (only username for now)
-    tokens = get_token_by_user_and_platform(user_id, "tiktok")
-    if not tokens:
-        print(f"No TikTok credentials found for user {user_id}. Skipping post.")
-        return False
+# ---------- Helpers for UI interaction ----------
+# Function to handle tiktok modals (confirmations or warnings)
+def confirm_or_close_modal_if_present(driver: uc.Chrome, post_click_phase: bool = False) -> None:
+    try:
+        # Waits for a modal container to appear on screen
+        modal = WebDriverWait(driver, 5).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, MODAL_CONTAINER_CSS))
+        )
+    except Exception:
+        return  # no modal present
 
     try:
-        driver = create_driver(True)
-        # Checks if the session is not valid
-        if needs_relogin(user_id ,driver):
-            driver.quit() # Closes old driver to start clean
-            # If the session data does not work then we login manually
-            login_and_save_session(user_id)
-            # Starts a new driver to avoid stale context
-            driver = create_driver(True)
-            # Loads the session cookies to the driver
-            load_session(user_id, driver)
+        # Extract and lowercase the modal text for easier  keyword checks
+        modal_text = modal.text.lower() if modal.text else ""
+    except Exception:
+        modal_text = ""
+
+    # Button labels to look for
+    confirm_labels = ["confirm", "continue", "ok"]
+    post_labels = ["post", "publish", "continue to post", "post now"]
+
+    try:
+        # Find all buttons in themodal
+        buttons = modal.find_elements(By.TAG_NAME, "button")
+        for btn in buttons:
+            try:
+                label = btn.text.strip().lower()
+                # If post phase, look for post/publish buttons
+                if post_click_phase and any(pl in label for pl in post_labels):
+                    btn.click()
+                    print(f"[INFO] Clicked post-confirm modal button: '{btn.text}'")
+                    time.sleep(1)
+                    return
+                # Otherwise, check regular confirm buttons
+                elif any(cl in label for cl in confirm_labels) or "copyright" in modal_text:
+                    btn.click()
+                    print(f"[INFO] Clicked confirm modal button: '{btn.text}'")
+                    time.sleep(1)
+                    return
+            except Exception:
+                continue
+
+        # fallback: click first button if we are desperate (usually safe to close modal)
+        if buttons:
+            buttons[0].click()
+            print("[INFO] Fallback clicked first modal button")
+            time.sleep(0.6)
+    except Exception:
+        pass
+
+# Function to open the visibility dropdown and set it public (Everyone)
+def find_and_set_visibility_public(driver: uc.Chrome) -> None:
     
-        # Navigate to tiktok's upload view 
-        driver.get("https://www.tiktok.com/upload")
+    # Common visible texts for the trigger button
+    texts_to_try = ["Everyone", "Public"]
+    trigger = None
 
-        # Upload the video
-        WebDriverWait(driver,20).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "input[type='file']"))
-        ).send_keys(final_video_path)
-
-
-        # Check if a modal pops up and close it
+    # Try to locate the dropdown trigger using the exact visible label
+    for txt in texts_to_try:
         try:
-            modal_close_btn = WebDriverWait(driver, 5).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, ".TUXModal button, .TUXModal [role='button']"))
+            trigger = WebDriverWait(driver, 4).until(
+                EC.element_to_be_clickable((By.XPATH, f"//button[.//div[text()='{txt}']]"))
             )
-            modal_close_btn.click()
-            print("Modal detected and closed.")
-            time.sleep(1)
-        except:
-            # No modal detected — safe to continue
-            pass
+            break # Stops once found
+        except Exception:
+            continue
 
-        # Enter video description
-        caption_box = WebDriverWait(driver,20).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "[contenteditable='true']"))
-        )
-        caption_box.click()
-        # Delete any autofilled description
-        caption_box.send_keys(Keys.CONTROL + "a")
-        caption_box.send_keys(Keys.DELETE)
-        # Send the actual description
-        caption_box.send_keys(description)
-        time.sleep(random.uniform(1, 3))
-
-
-        # Set video to public
-        visibility_dropdown = WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable((By.CSS_SELECTOR, ".Select__content"))
-        )
-        visibility_dropdown.click()
-        time.sleep(1)
-        public_option = WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable((By.CSS_SELECTOR, '[data-value="&quot;0&quot;"]'))
-        )
-        public_option.click()
-    
-        # Click the post button
-        WebDriverWait(driver,20).until(
-            EC.element_to_be_clickable((By.CSS_SELECTOR,"[data-e2e='post_video_button']"))
-        ).click()
-
-        # Wait for success
-        # If redirected to the content view the video was posted (I think I have no idea I have not had any issue so i dont know wat would happen otherwise)
-        WebDriverWait(driver,45).until(
-            EC.url_contains("tiktokstudio/content")
-        )
-        print(f"[SUCCESS] Video {final_video_path} posted to tiktok")
-        return True
-    except Exception as e:
-        print(f"[ERROR] Failed to confirm upload: {e}")
-        return False
-    finally:
+    # Fallback: look for combobox buttons and check their inner div for keywords
+    if not trigger:
         try:
-            if driver:
-                driver.quit()
-        except Exception as close_error:
-            print(f"[WARN] Failed to cleanly close driver: {close_error}")
+            candidates = driver.find_elements(By.CSS_SELECTOR, "button[role='combobox']")
+            for c in candidates:
+                try:
+                    inner = c.find_element(By.XPATH, ".//div")
+                    if inner and inner.text.strip():
+                        if any(k.lower() in inner.text.strip().lower() for k in ["every",  "public"]):
+                            trigger = c
+                            break
+                except Exception:
+                    continue # Skip if inner div cannot be read
+        except Exception:
+            pass # Ignore if no candidates are found
 
-# SIMPLE TEST TO RUN THE FILE TO SEE IF IT WILL ACTUALLY POST
-# Unused id since we wont be querying from the db, url of the video to post and placeholder description for the caption
-# post_to_tiktok(1,r"C:\Users\Fabricio\personalProjects\AutoShorts\output\prompt_1\ciabatta_bread\final_video.mp4","This video will be deleted, it is just a test upload to see if the selenium posting logic in a pytho app works.")
+    # If still not found, raise an error
+    if not trigger:
+        raise RuntimeError("Visibility trigger not found")
+
+    # Clicks the trigger, wait for options to render
+    trigger.click()
+    time.sleep(random.uniform(0.4, 1.1))
+
+    # Finds the public option by data-value attribute (TikTok uses '"0"' for public)
+    try:
+        public_opt = WebDriverWait(driver, 6).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, "div[role='option'][data-value='&quot;0&quot;'], div[role='option'][data-value='\"0\"'], div[role='option'][data-value='0']"))
+        )
+        # Scrolls the option into view before clicking
+        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", public_opt)
+        time.sleep(0.3)
+        public_opt.click()
+        time.sleep(0.6)
+        return
+    except Exception as e:
+        # Last-resort: locate the option by visible text "Everyone" or "Public"
+        try:
+            public_opt = WebDriverWait(driver, 4).until(
+                EC.element_to_be_clickable((By.XPATH, "//div[@role='option']//div[contains(., 'Everyone') or contains(., 'Public')]"))
+            )
+            public_opt.click()
+            time.sleep(0.6)
+            return
+        except Exception:
+            raise RuntimeError(f"Could not select 'Public' option: {e}")
+
+# ---------- Main poster ----------
+# Function to post the video to tiktok
+def post_to_tiktok(user_id: int, final_video_path: str, description: str, headless: bool = True) -> bool:
+    driver = None
+    try:
+        # Check DB for saved TikTok session cookies
+        tokens = get_token_by_user_and_platform(user_id, "tiktok")
+        if not tokens:
+            print(f"[WARN] No TikTok tokens for user {user_id}.")
+            return False
+
+        # Launch an undetected Chrome session
+        driver = create_driver(headless=headless) 
+        # Prevent deeplink redirects that can break the upload flow
+        block_onelink_and_intents(driver)
+
+        # Try to load session cookies; fall back to manual login if missing
+        if not load_session(user_id, driver):
+            print("[INFO] No cookies found: please log in interactively to seed cookies.")
+            driver.quit() # Closes old driver to start clean
+            login_and_save_session(user_id) # Manual login
+            driver = create_driver(headless=headless) # Starts a new driver to avoid stale context
+            block_onelink_and_intents(driver) # Re-apply deeplink blocker
+            if not load_session(user_id, driver):
+                print("[ERROR] Failed to load session after interactive login.")
+                return False
+
+        # Navigate to tiktok upload page
+        driver.get(UPLOAD_URL)
+        time.sleep(3)  # Give JS time to load
+
+        # Validate video file path
+        final_video_path = str(Path(final_video_path).resolve())
+        if not Path(final_video_path).exists():
+            print(f"[ERROR] Video file does not exist: {final_video_path}")
+            return False
+
+        # Uploads file input
+        WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.CSS_SELECTOR, FILE_INPUT_CSS))).send_keys(final_video_path)
+        time.sleep(1.0)
+
+        # Handles any modal that may appear (copyright / confirm)
+        confirm_or_close_modal_if_present(driver)
+
+        # Fills caption
+        caption_box = WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.CSS_SELECTOR, CAPTION_CSS)))
+        caption_box.click()
+        caption_box.send_keys(Keys.CONTROL + "a") # Select all existing text
+        caption_box.send_keys(Keys.DELETE) # Clear it
+        caption_box.send_keys(description) # Enter new caption
+        time.sleep(random.uniform(0.7, 1.5))
+
+        # Sets visibility (Everyone)
+        find_and_set_visibility_public(driver)
+
+        # Ensures the post button is visible and click it (JS click as fallback)
+        post_btn = WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.CSS_SELECTOR, POST_BTN_CSS)))
+        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", post_btn)
+        time.sleep(random.uniform(1.4, 3.0))
+        try:
+            post_btn.click()
+        except Exception:
+            # Fallback to JS click if Selenium click fails
+            driver.execute_script("arguments[0].click();", post_btn)
+        
+        # Handles any post-confirmation modals
+        time.sleep(3.5)
+        confirm_or_close_modal_if_present(driver, post_click_phase=True)
+
+        # Wait for success: either URL fragment or a content element
+        try:
+            WebDriverWait(driver, 120).until(lambda d: SUCCESS_URL_FRAGMENT in (d.current_url or "") or len(d.find_elements(By.CSS_SELECTOR, "div.PostItem, [data-e2e='post-list-item']")) > 0)
+            print(f"[SUCCESS] Video {final_video_path} posted to TikTok.")
+            return True
+        except Exception:
+            # Save page screenshot for debugging
+            try:
+                error_dir = "output/errors"
+                os.makedirs(error_dir, exist_ok=True)
+                fn = os.path.join(error_dir, f"tiktok_post_error_{int(time.time())}.png")
+                print(f"[DEBUG] Saved screenshot to {fn}")
+            except Exception:
+                pass
+            print("[WARN] Upload not confirmed within timeout.")
+            return False
+
+    except Exception as e:
+        print(f"[ERROR] Failed to post to TikTok: {e}")
+        return False
+
+    finally:
+        if driver:
+            try:
+                driver.quit()
+            except Exception:
+                pass
