@@ -1,5 +1,5 @@
 import time, datetime
-from src.video_generator import generate_video
+from src.video_generator.generate_video import generate_video
 from src.crud import schedule_crud
 
 def post_scheduled_content():

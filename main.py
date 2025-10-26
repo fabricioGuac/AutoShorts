@@ -16,7 +16,7 @@ def main():
 
     # Checks the argument to see if it should run the cli or just the scheduled check
     if args.cron:
-        from src.scheduler.scheduled_tasks import post_scheduled_content
+        from src.scheduler.scheduled_task import post_scheduled_content
         post_scheduled_content()
     else:
         from src.cli import cli_main
